@@ -34,13 +34,22 @@ jobs:
           ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
             set -e
             
-            # Navigate to app directory
-            cd /home/ec2-user/sdkbackend || {
+            # Install git if not present
+            if ! command -v git &> /dev/null; then
+              echo "Git not found. Installing..."
+              sudo yum install -y git
+            fi
+            
+            # Navigate to app directory or clone for first time
+            if [ -d "/home/ec2-user/sdkbackend" ]; then
+              echo "App directory exists. Updating..."
+              cd /home/ec2-user/sdkbackend
+            else
               echo "App directory not found. Setting up for first time..."
               cd /home/ec2-user
-              git clone https://github.com/${{ github.repository }}.git sdkbackend || true
+              git clone https://github.com/${{ github.repository }}.git sdkbackend
               cd sdkbackend
-            }
+            fi
             
             # Pull latest changes
             git fetch origin
