@@ -1,0 +1,69 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        env:
+          SDKBACKEND_SSH_KEY: ${{ secrets.SDKBACKEND_SSH_KEY }}
+          EC2_HOST: 51.20.55.187
+          EC2_USER: ec2-user
+        run: |
+          # Save SSH key
+          echo "$SDKBACKEND_SSH_KEY" > ec2_key.pem
+          chmod 600 ec2_key.pem
+          
+          # Create .ssh directory if it doesn't exist
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Add EC2 to known hosts
+          ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+          
+          # Deploy to EC2
+          ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+            set -e
+            
+            # Navigate to app directory
+            cd /home/ec2-user/sdkbackend || {
+              echo "App directory not found. Setting up for first time..."
+              cd /home/ec2-user
+              git clone https://github.com/${{ github.repository }}.git sdkbackend || true
+              cd sdkbackend
+            }
+            
+            # Pull latest changes
+            git fetch origin
+            git reset --hard origin/main
+            git pull origin main
+            
+            # Install dependencies
+            npm install
+            
+            # Allow Node.js to bind to port 80 without sudo
+            NODE_PATH=$(which node)
+            sudo setcap 'cap_net_bind_service=+ep' $NODE_PATH
+            
+            # Stop existing process
+            pkill -f "node server.js" || true
+            sleep 2
+            
+            # Start the application in background on port 80
+            nohup npm start > /home/ec2-user/sdkbackend.log 2>&1 &
+            
+            echo "Deployment completed successfully!"
+          EOF
+          
+          # Cleanup
+          rm -f ec2_key.pem
+
