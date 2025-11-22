@@ -40,6 +40,13 @@ jobs:
               sudo yum install -y git
             fi
             
+            # Install Node.js if not present
+            if ! command -v node &> /dev/null; then
+              echo "Node.js not found. Installing..."
+              curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+              sudo yum install -y nodejs
+            fi
+            
             # Navigate to app directory or clone for first time
             if [ -d "/home/ec2-user/sdkbackend" ]; then
               echo "App directory exists. Updating..."
