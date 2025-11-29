@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2015",
+    "module": "none",
+    "lib": ["ES2015", "DOM"],
+    "outDir": "./public/sdk",
+    "rootDir": "./js_sdk",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "removeComments": false,
+    "declaration": false
+  },
+  "include": ["js_sdk/**/*"],
+  "exclude": ["node_modules", "dist", "src"]
+}
+

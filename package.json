@@ -1,11 +1,14 @@
 {
   "name": "sdkbackend",
   "version": "1.0.0",
-  "description": "Basic Node.js backend server",
-  "main": "server.js",
+  "description": "TypeScript SDK backend server",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
-    "dev": "NODE_ENV=development nodemon server.js"
+    "build": "tsc",
+    "build:sdk": "esbuild js_sdk/sdk.ts --bundle --outfile=public/sdk/sdk.js --format=iife",
+    "start": "NODE_ENV=production node dist/server.js",
+    "dev": "NODE_ENV=development ts-node-dev --respawn src/server.ts",
+    "watch:sdk": "esbuild js_sdk/sdk.ts --bundle --outfile=public/sdk/sdk.js --format=iife --watch"
   },
   "keywords": [],
   "author": "",
@@ -16,7 +19,13 @@
     "dotenv": "^16.3.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "ts-node-dev": "^2.0.0",
+    "nodemon": "^3.0.1",
+    "esbuild": "^0.19.8"
   }
 }
 
