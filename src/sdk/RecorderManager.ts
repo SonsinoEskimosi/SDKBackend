@@ -1,12 +1,18 @@
 import { BaseRecorder } from './types';
+import { BACKEND_HOST } from './constants';
 
 export class RecorderManager {
   private recorders: Map<string, BaseRecorder>;
   private flushInterval: number | null = null;
-  private backendUrl: string = 'https://macaw-cheerful-ghastly.ngrok-free.app/api/events';
+  private backendUrl: string = `${BACKEND_HOST}/api/events`;
+  private eskimoId: string = '';
 
   constructor() {
     this.recorders = new Map();
+  }
+
+  setEskimoId(eskimoId: string): void {
+    this.eskimoId = eskimoId;
   }
 
   register(recorder: BaseRecorder): void {
@@ -68,6 +74,7 @@ export class RecorderManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
+          eskimoId: this.eskimoId,
           data
         })
       });

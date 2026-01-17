@@ -14,13 +14,21 @@ const openai = new OpenAI({
 const REDIS_QUEUE_KEY = 'image_processing_queue';
 
 export async function queueImagesForProcessing(imageUrls: string[]) {
+  const pendingBatches = await openAiBatchStatusRepo.getAllPendingBatches();
+  const imagesInBatches = new Set(
+    pendingBatches.flatMap(batch => batch.imageUrls)
+  );
+
   for (const imageUrl of imageUrls) {
     const alreadyProcessed = await ImageScanResult.findOne({ imageUrl });
     const alreadyQueued = await redisClient.sIsMember(REDIS_QUEUE_KEY, imageUrl);
+    const inPendingBatch = imagesInBatches.has(imageUrl);
     
-    if (!alreadyProcessed && !alreadyQueued) {
+    if (!alreadyProcessed && !alreadyQueued && !inPendingBatch) {
       await redisClient.sAdd(REDIS_QUEUE_KEY, imageUrl);
       logger.info(`[Queue] Added: ${imageUrl}`);
+    } else if (inPendingBatch) {
+      logger.info(`[Queue] Skipped (in pending batch): ${imageUrl}`);
     }
   }
 }

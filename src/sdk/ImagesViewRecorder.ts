@@ -6,6 +6,8 @@ export class ImagesViewRecorder implements BaseRecorder {
   private viewedImages: Set<string> = new Set();
   private mutationObserver: MutationObserver | null = null;
   private intersectionObserver: IntersectionObserver | null = null;
+  private viewTimers: Map<string, number> = new Map();
+  private readonly VIEW_DURATION_MS = 3000;
 
   start(): void {
     if (this.isActive) return;
@@ -19,14 +21,26 @@ export class ImagesViewRecorder implements BaseRecorder {
   private setupIntersectionObserver(): void {
     this.intersectionObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const img = entry.target as HTMLImageElement;
-          if (this.isVisible(img)) {
-            const src = img.src;
-            if (src && !this.viewedImages.has(src)) {
+        const img = entry.target as HTMLImageElement;
+        const src = img.src;
+        
+        if (!src) return;
+
+        if (entry.isIntersecting && this.isVisible(img)) {
+          if (!this.viewedImages.has(src) && !this.viewTimers.has(src)) {
+            const timerId = window.setTimeout(() => {
               this.viewedImages.add(src);
-              console.log('[ImagesView]', src);
-            }
+              this.viewTimers.delete(src);
+              console.log('[ImagesView] Viewed 3s:', src);
+            }, this.VIEW_DURATION_MS);
+            
+            this.viewTimers.set(src, timerId);
+          }
+        } else {
+          const timerId = this.viewTimers.get(src);
+          if (timerId) {
+            window.clearTimeout(timerId);
+            this.viewTimers.delete(src);
           }
         }
       });
@@ -82,6 +96,10 @@ export class ImagesViewRecorder implements BaseRecorder {
   stop(): void {
     if (!this.isActive) return;
     this.isActive = false;
+    
+    this.viewTimers.forEach(timerId => window.clearTimeout(timerId));
+    this.viewTimers.clear();
+    
     this.mutationObserver?.disconnect();
     this.mutationObserver = null;
     this.intersectionObserver?.disconnect();
@@ -97,6 +115,8 @@ export class ImagesViewRecorder implements BaseRecorder {
 
   reset(): void {
     this.viewedImages.clear();
+    this.viewTimers.forEach(timerId => window.clearTimeout(timerId));
+    this.viewTimers.clear();
   }
 }
 
