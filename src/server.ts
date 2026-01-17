@@ -1,23 +1,24 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import * as esbuild from 'esbuild';
 import mongoose from 'mongoose';
-import { ImageScanResult } from './models/ImageScanResult';
-import OpenAI from 'openai';
-
-dotenv.config();
+import { queueImagesForProcessing, processBatchFromQueue, resumePendingBatches, getPendingBatches, getQueueStatus } from './services/imageProcessor';
+import { connectRedis } from './services/redisClient';
+import logger from './utils/logger';
 
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/eskimosi';
 
 mongoose.connect(MONGO_URL)
-  .then(() => console.log('[MongoDB] Connected to', MONGO_URL))
-  .catch(err => console.error('[MongoDB] Connection error:', err));
+  .then(() => logger.info(`[MongoDB] Connected to ${MONGO_URL}`))
+  .catch(err => logger.error('[MongoDB] Connection error:', err));
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+connectRedis()
+  .then(() => resumePendingBatches())
+  .catch(err => logger.error('[Redis] Connection error:', err));
 
 const app = express();
 const isDev = process.env.NODE_ENV === 'development';
@@ -44,7 +45,7 @@ app.get('/sdk/sdk.js', async (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.send(code);
   } catch (error) {
-    console.error('[SDK Build Error]', error);
+    logger.error('[SDK Build Error]', error);
     res.status(500).json({ error: 'Failed to build SDK' });
   }
 });
@@ -58,93 +59,43 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+app.get('/api/batches', async (req, res) => {
+  try {
+    const batches = await getPendingBatches();
+    const queue = await getQueueStatus();
+    res.json({ 
+      pendingBatches: batches,
+      queue: queue
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/events', async (req, res) => {
   const { timestamp, data } = req.body;
   
-  console.log('[Events] Received at:', timestamp);
+  logger.info(`[Events] Received at: ${timestamp}`);
   
   if (data.imagesView?.images?.length > 0) {
     const images = data.imagesView.images;
-    console.log(`[AI] Processing ${images.length} images...`);
+    logger.info(`[Queue] Queueing ${images.length} images...`);
     
-    processImagesWithAI(images);
+    queueImagesForProcessing(images);
   }
   
   res.json({ received: true, timestamp: new Date().toISOString() });
 });
 
-async function processImagesWithAI(imageUrls: string[]) {
-  for (const imageUrl of imageUrls) {
-    try {
-      const existing = await ImageScanResult.findOne({ imageUrl });
-      
-      if (existing) {
-        console.log(`[AI] Skipping ${imageUrl} (already scanned)`);
-        continue;
-      }
-
-      console.log(`[AI] Analyzing with GPT-4 Vision: ${imageUrl}...`);
-      
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Analyze this fashion product image. Describe the colors and style with simple labels:
-- Product type (jacket, dress, pants, etc.)
-- Colors (be specific)
-- Style/pattern (denim, floral, solid, striped, etc.)
-- Fit (oversized, fitted, slim, etc.)
-- Material/fabric if visible
-- Notable features (buttons, zipper, pockets, etc.)
-
-Return only a comma-separated list of labels, no explanations.`
-              },
-              {
-                type: "image_url",
-                image_url: { url: imageUrl }
-              }
-            ]
-          }
-        ],
-        max_tokens: 200
-      });
-
-      const content = response.choices[0].message.content || '';
-      const labelStrings = content.split(',').map(s => s.trim()).filter(s => s.length > 0);
-      
-      const labels = labelStrings.map(label => ({
-        description: label,
-        score: 0.9
-      }));
-
-      await ImageScanResult.create({
-        imageUrl,
-        labels,
-        webEntities: [],
-        dominantColor: undefined
-      });
-
-      console.log(`\n[AI] Image: ${imageUrl}`);
-      console.log(`[AI] Fashion Labels:`);
-      labels.forEach((label: any) => {
-        console.log(`  - ${label.description}`);
-      });
-      console.log('[MongoDB] Saved to database\n');
-      
-    } catch (error: any) {
-      console.error(`[AI] Failed to process ${imageUrl}:`, error.message);
-    }
-  }
-}
-
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Visit http://localhost:${PORT}`);
-  console.log(`SDK available at http://localhost:${PORT}/sdk/sdk.js`);
+  logger.info(`Server is running on port ${PORT}`);
+  logger.info(`Visit http://localhost:${PORT}`);
+  logger.info(`SDK available at http://localhost:${PORT}/sdk/sdk.js`);
 });
 
+// Process batch every 5 minutes
+setInterval(() => {
+  logger.info('[Scheduler] Running batch processor...');
+  processBatchFromQueue().catch(err => logger.error('[Scheduler] Error:', err));
+}, 5 * 60 * 1000);

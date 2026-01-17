@@ -6,15 +6,6 @@ const imageScanResultSchema = new mongoose.Schema({
     description: String,
     score: Number
   }],
-  webEntities: [{
-    description: String,
-    score: Number
-  }],
-  dominantColor: {
-    red: Number,
-    green: Number,
-    blue: Number
-  },
   scannedAt: { type: Date, default: Date.now }
 });
 
